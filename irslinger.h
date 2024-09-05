@@ -5,6 +5,8 @@
 #include <math.h>
 #include <pigpio.h>
 #include <stdio.h>
+#define IR_PROTOCOL_IS_MSB_FIRST 1
+#define IR_PROTOCOL_IS_LSB_FIRST 0
 
 #define MAX_COMMAND_SIZE 512
 #define MAX_PULSES 12000
@@ -40,7 +42,7 @@ static inline void carrierFrequency(uint32_t outPin, double frequency, double du
 			addPulse(1 << outPin, 0, onDuration, irSignal, pulseCount);
 		}
 		else
-		{
+	{
 			// Low pulse
 			addPulse(0, 1 << outPin, offDuration, irSignal, pulseCount);
 		}
@@ -80,7 +82,7 @@ static inline int transmitWave(uint32_t outPin, gpioPulse_t *irSignal, unsigned 
 		printf("Result: %i\n", result);
 	}
 	else
-	{
+{
 		printf("Wave creation failure!\n %i", waveID);
 	}
 
@@ -102,10 +104,10 @@ static inline int transmitWave(uint32_t outPin, gpioPulse_t *irSignal, unsigned 
 }
 
 static inline int irSlingRC5(uint32_t outPin,
-	int frequency,
-	double dutyCycle,
-	unsigned int pulseDuration,
-	const char *code)
+							 int frequency,
+							 double dutyCycle,
+							 unsigned int pulseDuration,
+							 const char *code)
 {
 	if (outPin > 31)
 	{
@@ -153,16 +155,16 @@ static inline int irSlingRC5(uint32_t outPin,
 }
 
 static inline int irSling(uint32_t outPin,
-	int frequency,
-	double dutyCycle,
-	int leadingPulseDuration,
-	int leadingGapDuration,
-	int onePulse,
-	int zeroPulse,
-	int oneGap,
-	int zeroGap,
-	int sendTrailingPulse,
-	const char *code)
+						  int frequency,
+						  double dutyCycle,
+						  int leadingPulseDuration,
+						  int leadingGapDuration,
+						  int onePulse,
+						  int zeroPulse,
+						  int oneGap,
+						  int zeroGap,
+						  int sendTrailingPulse,
+						  const char *code)
 {
 	if (outPin > 31)
 	{
@@ -217,11 +219,72 @@ static inline int irSling(uint32_t outPin,
 	return transmitWave(outPin, irSignal, &pulseCount);
 }
 
+static inline int irSlingBit(uint32_t outPin,
+							 int frequency,
+							 double dutyCycle,
+							 int leadingPulseDuration,
+							 int leadingGapDuration,
+							 int onePulse,
+							 int zeroPulse,
+							 int oneGap,
+							 int zeroGap,
+							 int sendTrailingPulse,
+							 uint32_t bits,
+							 int bitCount,
+							 int endian_type)
+{
+	if (outPin > 31)
+	{
+		// Invalid pin number
+		return 1;
+	}
+	if ( bitCount > 32 ) {
+		return 1;
+	}
+	gpioPulse_t irSignal[MAX_PULSES];
+	unsigned int pulseCount = 0;
+
+	// Generate Code
+	carrierFrequency(outPin, frequency, dutyCycle, leadingPulseDuration, irSignal, &pulseCount);
+	gap(outPin, leadingGapDuration, irSignal, &pulseCount);
+
+	int i;
+	uint32_t bitMask = ((uint32_t)1 << (bitCount-1));
+	for (i = 0; i < bitCount; i++)
+	{
+		if ( ((endian_type==IR_PROTOCOL_IS_MSB_FIRST) &&(bits & bitMask)) || 
+			(endian_type == IR_PROTOCOL_IS_LSB_FIRST && (bits & 1)) )
+		{
+			carrierFrequency(outPin, frequency, dutyCycle, onePulse, irSignal, &pulseCount);
+			gap(outPin, oneGap, irSignal, &pulseCount);
+		}
+		else
+		{
+			carrierFrequency(outPin, frequency, dutyCycle, zeroPulse, irSignal, &pulseCount);
+			gap(outPin, zeroGap, irSignal, &pulseCount);
+		}
+		if ( endian_type == IR_PROTOCOL_IS_MSB_FIRST)
+			bitMask >>=1;
+		else
+			bits >>=1;
+	}
+
+	if (sendTrailingPulse)
+	{
+		carrierFrequency(outPin, frequency, dutyCycle, onePulse, irSignal, &pulseCount);
+	}
+
+	printf("pulse count is %i\n", pulseCount);
+	// End Generate Code
+
+	return transmitWave(outPin, irSignal, &pulseCount);
+}
+
 static inline int irSlingRaw(uint32_t outPin,
-	int frequency,
-	double dutyCycle,
-	const int *pulses,
-	int numPulses)
+							 int frequency,
+							 double dutyCycle,
+							 const int *pulses,
+							 int numPulses)
 {
 	if (outPin > 31)
 	{
